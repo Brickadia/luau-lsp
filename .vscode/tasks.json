@@ -4,19 +4,20 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "type": "npm",
-      "script": "watch",
-      "problemMatcher": ["$ts-webpack-watch", "$tslint-webpack-watch"],
-      "isBackground": true,
-      "presentation": {
-        "reveal": "never",
-        "group": "watchers"
-      },
-      "group": {
-        "kind": "build",
-        "isDefault": true
-      },
-      "path": "editors/code/"
+      "label": "Build Extension",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoProfile",
+        "-File",
+        "${workspaceFolder}/editors/code/scripts/build.ps1",
+        "-Development",
+        "-Server",
+        "${workspaceFolder}/${input:binaryPath}/${input:binaryName}"
+      ],
+      "group": "build",
+      "problemMatcher": [],
+      "detail": "Bundle the extension with esbuild and copy in the server"
     },
     {
       "label": "Build Server",
@@ -44,34 +45,36 @@
       "detail": "Build Language Server Binary"
     },
     {
-      "type": "npm",
-      "script": "watch-tests",
-      "problemMatcher": "$tsc-watch",
-      "isBackground": true,
-      "presentation": {
-        "reveal": "never",
-        "group": "watchers"
-      },
-      "group": "build",
-      "path": "editors/code/"
-    },
-    {
-      "label": "tasks: watch-tests",
-      "dependsOn": ["npm: watch", "npm: watch-tests"],
-      "problemMatcher": []
-    },
-    {
-      "type": "npm",
-      "script": "compile",
-      "group": "build",
-      "problemMatcher": [],
-      "label": "npm: compile",
-      "detail": "webpack",
-      "path": "editors/code/"
-    },
-    {
       "label": "Build Server and Extension",
-      "dependsOn": ["Build Server", "npm: compile"]
+      "dependsOn": ["Build Server", "Build Extension"],
+      "dependsOrder": "sequence",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "binaryPath",
+      "type": "pickString",
+      "description": "Path to build folder containing 'luau-lsp'",
+      "default": "cmake-build-relwithdebinfo-visual-studio",
+      "options": [
+        "cmake-build-debug-visual-studio",
+        "cmake-build-release-visual-studio",
+        "cmake-build-relwithdebinfo-visual-studio",
+        "cmake-build-debug",
+        "cmake-build-release",
+        "cmake-build-relwithdebinfo"
+      ]
+    },
+    {
+      "id": "binaryName",
+      "type": "pickString",
+      "description": "Server executable name",
+      "default": "luau-lsp.exe",
+      "options": ["luau-lsp.exe", "luau-lsp"]
     }
   ]
 }

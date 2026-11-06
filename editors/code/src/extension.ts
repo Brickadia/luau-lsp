@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
 import * as os from "os";
-import { fetch } from "undici";
 import {
   CloseAction,
   CloseHandlerResult,
@@ -23,81 +22,28 @@ import {
 
 import { onTypeFormattingMiddleware } from "./onTypeFormattingMiddleware";
 
-import { registerRequireGraph } from "./requireGraph";
-
 import { registerViewInternalSource } from "./internalSource";
 
-import * as roblox from "./roblox";
 import * as utils from "./utils";
-import {
-  anyFileIsMissing,
-  downloadExternalFiles,
-  DownloadFileDefinition,
-  isExternalFile,
-  outputLocationForDefinition,
-  outputLocationForDocumentation,
-  shouldFetchDefinitions,
-} from "./definitions";
-
-export type PlatformContext = { client: LanguageClient | undefined };
-export type AddArgCallback = (
-  argument: string,
-  mode?: "All" | "Prod" | "Debug",
-) => void;
 
 let client: LanguageClient | undefined = undefined;
-let platformContext: PlatformContext = { client: undefined };
 const clientDisposables: vscode.Disposable[] = [];
 
-const CURRENT_FFLAGS =
-  "https://clientsettingscdn.roblox.com/v1/settings/application?applicationName=PCStudioApp";
 const FFLAG_KINDS = ["FFlag", "FInt", "DFFlag", "DFInt"];
 
-type FFlags = Record<string, string>;
-type FFlagsEndpoint = { applicationSettings: FFlags };
+// Commands the server may ask the client to run through `$/command`.
+const SERVER_COMMANDS = new Set(["cursorMove"]);
 
-const getFFlags = async () => {
-  return vscode.window.withProgress(
-    {
-      location: vscode.ProgressLocation.Window,
-      title: "Luau: Fetching FFlags",
-      cancellable: false,
-    },
-    () =>
-      fetch(CURRENT_FFLAGS)
-        .then((r) => r.json() as Promise<FFlagsEndpoint>)
-        .then((r) => r.applicationSettings),
-  );
-};
+type FFlags = Record<string, string>;
 
 const isAlphanumericUnderscore = (str: string) => {
   return /^[a-zA-Z0-9_]+$/.test(str);
 };
 
-const isCrashReportingEnabled = () => {
-  const config = vscode.workspace.getConfiguration("luau-lsp.server");
-  return config.get("crashReporting.enabled", false);
-};
-
-const DO_NOT_SHOW_CRASH_REPORTING_SUGGESTION_KEY =
-  "doNotShowCrashReportingSuggestion";
-
-const shouldShowEnableCrashReportsMessage = (
-  context: vscode.ExtensionContext,
-) => {
-  return !context.globalState.get<boolean>(
-    DO_NOT_SHOW_CRASH_REPORTING_SUGGESTION_KEY,
-  );
-};
-
 class ClientErrorHandler implements ErrorHandler {
   private readonly restarts: number[];
-  private recommendedCrashReporting: boolean = false;
 
-  constructor(
-    private context: vscode.ExtensionContext,
-    private maxRestartCount: number,
-  ) {
+  constructor(private maxRestartCount: number) {
     this.restarts = [];
   }
 
@@ -113,37 +59,6 @@ class ClientErrorHandler implements ErrorHandler {
   }
 
   public closed(): CloseHandlerResult {
-    if (
-      !this.recommendedCrashReporting &&
-      !isCrashReportingEnabled() &&
-      shouldShowEnableCrashReportsMessage(this.context)
-    ) {
-      this.recommendedCrashReporting = true;
-      vscode.window
-        .showInformationMessage(
-          "The Luau Language server exited unexpected. Would you like to enable crash reporting?",
-          "Enable",
-          "Not now",
-          "Do not show again",
-        )
-        .then((value) => {
-          if (value === "Enable") {
-            vscode.workspace
-              .getConfiguration("luau-lsp.server")
-              .update(
-                "crashReporting.enabled",
-                true,
-                vscode.ConfigurationTarget.Global,
-              );
-          } else if (value === "Do not show again") {
-            this.context.globalState.update(
-              DO_NOT_SHOW_CRASH_REPORTING_SUGGESTION_KEY,
-              true,
-            );
-          }
-        });
-    }
-
     this.restarts.push(Date.now());
     if (this.restarts.length <= this.maxRestartCount) {
       return { action: CloseAction.Restart };
@@ -162,88 +77,12 @@ class ClientErrorHandler implements ErrorHandler {
   }
 }
 
-const handleExternalFiles = async (
-  context: vscode.ExtensionContext,
-  definitionFiles: {
-    [packageName: string]: string;
-  },
-  documentationFiles: string[],
-  builtinDefinitionFiles: {
-    [packageName: string]: DownloadFileDefinition;
-  },
-  builtinDocumentationFiles: DownloadFileDefinition[],
-) => {
-  const finalDefinitionFiles = new Map<string, string>();
-
-  // Determine a list of external files to fetch
-  const externalFiles: DownloadFileDefinition[] = [];
-  for (let [packageName, definitionPath] of Object.entries(definitionFiles)) {
-    if (isExternalFile(definitionPath)) {
-      const outputLocation = outputLocationForDefinition(context, packageName);
-      externalFiles.push({
-        url: definitionPath,
-        outputUri: outputLocation,
-      });
-      finalDefinitionFiles.set(packageName, outputLocation.fsPath);
-    } else {
-      finalDefinitionFiles.set(packageName, definitionPath);
-    }
+const resolveWorkspacePath = (configuredPath: string) => {
+  const resolved = utils.resolvePath(configuredPath);
+  if (vscode.workspace.workspaceFolders) {
+    return utils.resolveUri(vscode.workspace.workspaceFolders[0].uri, resolved);
   }
-  documentationFiles = documentationFiles.map((documentationPath) => {
-    if (isExternalFile(documentationPath)) {
-      const outputLocation = outputLocationForDocumentation(
-        context,
-        documentationPath,
-      );
-      externalFiles.push({
-        url: documentationPath,
-        outputUri: outputLocation,
-      });
-      return outputLocation.fsPath;
-    } else {
-      return documentationPath;
-    }
-  });
-
-  for (const [packageName, downloadDefinition] of Object.entries(
-    builtinDefinitionFiles,
-  )) {
-    if (!finalDefinitionFiles.has(packageName)) {
-      externalFiles.push(downloadDefinition);
-      finalDefinitionFiles.set(
-        packageName,
-        downloadDefinition.outputUri.fsPath,
-      );
-    }
-  }
-
-  if (builtinDocumentationFiles) {
-    externalFiles.push(...builtinDocumentationFiles);
-    documentationFiles = documentationFiles.concat(
-      builtinDocumentationFiles.map((info) => info.outputUri.fsPath),
-    );
-  }
-
-  if (externalFiles) {
-    const mustUpdate = await anyFileIsMissing(
-      externalFiles.map((info) => info.outputUri),
-    );
-    if (mustUpdate || shouldFetchDefinitions(context)) {
-      try {
-        await downloadExternalFiles(externalFiles);
-      } catch (err) {
-        vscode.window.showWarningMessage(
-          "Failed to donwload API information: " + err,
-        );
-      }
-    }
-  }
-
-  return {
-    definitionFiles: finalDefinitionFiles,
-    documentationFiles,
-    externalFiles,
-  };
+  return vscode.Uri.file(resolved);
 };
 
 const startLanguageServer = async (context: vscode.ExtensionContext) => {
@@ -269,48 +108,17 @@ const startLanguageServer = async (context: vscode.ExtensionContext) => {
     }
   };
 
-  const {
-    definitions: builtinDefinitionFiles,
-    documentation: builtinDocumentationFiles,
-  } = await roblox.preLanguageServerStart(context);
-
   const typesConfig = vscode.workspace.getConfiguration("luau-lsp.types");
 
   // Load extra type definitions
-  // TODO: deprecate and remove support of array-based definitionFiles configuration
-  let definitionFilesConfig =
-    typesConfig.get<{ [packageName: string]: string } | string[]>(
-      "definitionFiles",
-    ) ?? {};
+  const definitionFilesConfig =
+    typesConfig.get<{ [packageName: string]: string }>("definitionFiles") ??
+    {};
 
-  if (Array.isArray(definitionFilesConfig)) {
-    definitionFilesConfig = Object.fromEntries(
-      definitionFilesConfig.map((path, index) => ["roblox" + index, path]),
-    );
-  }
-
-  const documentationFilesConfig =
-    typesConfig.get<string[]>("documentationFiles") ?? [];
-
-  const result = await handleExternalFiles(
-    context,
+  for (const [packageName, definitionPath] of Object.entries(
     definitionFilesConfig,
-    documentationFilesConfig,
-    builtinDefinitionFiles ?? {},
-    builtinDocumentationFiles ?? [],
-  );
-
-  for (let [packageName, definitionPath] of result.definitionFiles) {
-    definitionPath = utils.resolvePath(definitionPath);
-    let uri;
-    if (vscode.workspace.workspaceFolders) {
-      uri = utils.resolveUri(
-        vscode.workspace.workspaceFolders[0].uri,
-        definitionPath,
-      );
-    } else {
-      uri = vscode.Uri.file(definitionPath);
-    }
+  )) {
+    const uri = resolveWorkspacePath(definitionPath);
     if (await utils.exists(uri)) {
       addArg(`--definitions:${packageName}=${uri.fsPath}`);
     } else {
@@ -321,17 +129,10 @@ const startLanguageServer = async (context: vscode.ExtensionContext) => {
   }
 
   // Load extra documentation files
-  for (let documentationPath of result.documentationFiles) {
-    documentationPath = utils.resolvePath(documentationPath);
-    let uri;
-    if (vscode.workspace.workspaceFolders) {
-      uri = utils.resolveUri(
-        vscode.workspace.workspaceFolders[0].uri,
-        documentationPath,
-      );
-    } else {
-      uri = vscode.Uri.file(documentationPath);
-    }
+  for (const documentationPath of typesConfig.get<string[]>(
+    "documentationFiles",
+  ) ?? []) {
+    const uri = resolveWorkspacePath(documentationPath);
     if (await utils.exists(uri)) {
       addArg(`--docs=${uri.fsPath}`);
     } else {
@@ -347,32 +148,6 @@ const startLanguageServer = async (context: vscode.ExtensionContext) => {
 
   if (!fflagsConfig.get<boolean>("enableByDefault")) {
     addArg("--no-flags-enabled");
-  }
-
-  // Sync FFlags with upstream
-  if (fflagsConfig.get<boolean>("sync")) {
-    try {
-      const currentFlags = await getFFlags();
-      if (currentFlags) {
-        for (const [name, value] of Object.entries(currentFlags)) {
-          for (const kind of FFLAG_KINDS) {
-            if (name.startsWith(`${kind}Luau`)) {
-              // Remove the "FFlag" part from the name
-              fflags[name.substring(kind.length)] = value;
-            }
-          }
-        }
-      }
-    } catch (err) {
-      vscode.window.showWarningMessage(
-        "Failed to fetch current Luau FFlags: " + err,
-      );
-    }
-  }
-
-  // Enable new solver
-  if (fflagsConfig.get<boolean>("enableNewSolver")) {
-    fflags["LuauSolverV2"] = "true";
   }
 
   // Handle overrides
@@ -446,32 +221,16 @@ const startLanguageServer = async (context: vscode.ExtensionContext) => {
     addArg("--delay-startup");
   }
 
-  if (isCrashReportingEnabled()) {
-    addArg("--enable-crash-reporting");
-    addArg(
-      `--crash-report-directory=${vscode.Uri.joinPath(context.globalStorageUri, "sentry").fsPath}`,
-    );
-  }
-
   // Handle base luaurc
   const baseLuaurcConfig = serverConfiguration.get<string>("baseLuaurc");
   if (baseLuaurcConfig) {
-    const baseLuaurcPath = utils.resolvePath(baseLuaurcConfig);
-    let uri;
-    if (vscode.workspace.workspaceFolders) {
-      uri = utils.resolveUri(
-        vscode.workspace.workspaceFolders[0].uri,
-        baseLuaurcPath,
-      );
-    } else {
-      uri = vscode.Uri.file(baseLuaurcPath);
-    }
+    const uri = resolveWorkspacePath(baseLuaurcConfig);
     if (await utils.exists(uri)) {
       addArg(`--base-luaurc=${uri.fsPath}`);
     } else {
       vscode.window
         .showWarningMessage(
-          `Base .luaurc file at ${baseLuaurcPath} does not exist`,
+          `Base .luaurc file at ${baseLuaurcConfig} does not exist`,
           "Configure Settings",
         )
         .then((action) => {
@@ -530,7 +289,7 @@ const startLanguageServer = async (context: vscode.ExtensionContext) => {
     markdown: {
       supportHtml: true,
     },
-    errorHandler: new ClientErrorHandler(context, 4),
+    errorHandler: new ClientErrorHandler(4),
     middleware: {
       provideOnTypeFormattingEdits: onTypeFormattingMiddleware,
     },
@@ -543,11 +302,11 @@ const startLanguageServer = async (context: vscode.ExtensionContext) => {
     clientOptions,
   );
 
-  platformContext.client = client;
-
   // Register commands
   client.onNotification("$/command", (params) => {
-    vscode.commands.executeCommand(params.command, params.data);
+    if (SERVER_COMMANDS.has(params.command)) {
+      vscode.commands.executeCommand(params.command, params.data);
+    }
   });
 
   clientDisposables.push(
@@ -571,32 +330,7 @@ const startLanguageServer = async (context: vscode.ExtensionContext) => {
   clientDisposables.push(...registerComputeBytecode(context, client));
   clientDisposables.push(...registerComputeCompilerRemarks(context, client));
   clientDisposables.push(...registerComputeCodeGen(context, client));
-  clientDisposables.push(...registerRequireGraph(context, client));
   clientDisposables.push(...registerViewInternalSource(context, client));
-  clientDisposables.push(
-    vscode.commands.registerCommand("luau-lsp.openWalkthrough", () => {
-      return vscode.commands.executeCommand(
-        "workbench.action.openWalkthrough",
-        "JohnnyMorganz.luau-lsp#getting-started",
-        false,
-      );
-    }),
-  );
-  clientDisposables.push(
-    vscode.commands.registerCommand("luau-lsp.updateApi", async () => {
-      await downloadExternalFiles(result.externalFiles);
-      vscode.window
-        .showInformationMessage(
-          "API Types have been updated, reload server to take effect.",
-          "Reload Language Server",
-        )
-        .then((command) => {
-          if (command === "Reload Language Server") {
-            vscode.commands.executeCommand("luau-lsp.reloadServer");
-          }
-        });
-    }),
-  );
 
   console.log("LSP Setup");
   await client.start();
@@ -604,8 +338,6 @@ const startLanguageServer = async (context: vscode.ExtensionContext) => {
 
 export async function activate(context: vscode.ExtensionContext) {
   console.log("Luau LSP activated");
-
-  await roblox.onActivate(platformContext, context);
 
   context.subscriptions.push(
     vscode.commands.registerCommand("luau-lsp.reloadServer", async () => {
@@ -666,13 +398,10 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   await startLanguageServer(context);
-
-  await roblox.postLanguageServerStart(platformContext, context);
 }
 
 export async function deactivate() {
   return Promise.allSettled([
-    ...roblox.onDeactivate(),
     client?.stop(),
     clientDisposables.map((disposable) => disposable.dispose()),
   ]);
