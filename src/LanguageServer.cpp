@@ -712,6 +712,7 @@ lsp::InitializeResult LanguageServer::onInitialize(const lsp::InitializeParams& 
             client->sendLogMessage(lsp::MessageType::Error, std::string("Failed to parse initialization options: ") + err.what());
         }
     }
+    applyRequiredFlags();
 
     // Update the solver mode for null workspace after FFlags are configured
     nullWorkspace->frontend.setLuauSolverMode(FFlag::LuauSolverV2 ? Luau::SolverMode::New : Luau::SolverMode::Old);

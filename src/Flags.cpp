@@ -15,6 +15,8 @@
 #endif
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauIntegerType2)
+LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTINT(LuauTableTypeMaximumStringifierLength)
 
@@ -87,6 +89,11 @@ void registerFastFlagsCLI(std::unordered_map<std::string, std::string>& fastFlag
 
 void applyRequiredFlags()
 {
+    // Brickadia's integer operators are typed only by the new solver.
+    FFlag::LuauSolverV2.value = true;
+    FFlag::LuauIntegerType2.value = true;
+    FFlag::LuauIntegerLibrary.value = true;
+
     // Manually enforce a LuauTarjanChildLimit increase
     // TODO: re-evaluate the necessity of this change
     if (FInt::LuauTarjanChildLimit > 0 && FInt::LuauTarjanChildLimit < 15000)

@@ -12,6 +12,8 @@
 #include "LSP/Client.hpp"
 #include "LSP/WorkspaceFileResolver.hpp"
 
+LUAU_FASTFLAG(LuauSolverV2)
+
 using LSPCancellationToken = std::shared_ptr<Luau::FrontendCancellationToken>;
 
 struct Reference
@@ -74,8 +76,8 @@ public:
         // TODO: we don't really need to retainFullTypeGraphs by default
         // but it seems that the option specified here is the one used
         // when calling Luau::autocomplete
-        , frontend(Luau::Frontend(
-              &fileResolver, &fileResolver, {/* retainFullTypeGraphs: */ true, /* forAutocomplete: */ false, /* runLintChecks: */ true}))
+        , frontend(Luau::Frontend(FFlag::LuauSolverV2 ? Luau::SolverMode::New : Luau::SolverMode::Old, &fileResolver, &fileResolver,
+              {/* retainFullTypeGraphs: */ true, /* forAutocomplete: */ false, /* runLintChecks: */ true}))
         , limits(Luau::TypeCheckLimits{})
     {
         fileResolver.client = client;
