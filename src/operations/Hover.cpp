@@ -115,12 +115,11 @@ std::optional<lsp::Hover> WorkspaceFolder::hover(const lsp::HoverParams& params,
     auto position = textDocument->convertPosition(params.position);
 
     // Run the type checker to ensure we are up to date
-    // TODO: expressiveTypes - remove "forAutocomplete" once the types have been fixed
-    checkStrict(moduleName, cancellationToken, /* forAutocomplete: */ config.hover.strictDatamodelTypes);
+    checkStrict(moduleName, cancellationToken, /* forAutocomplete: */ false);
     throwIfCancelled(cancellationToken);
 
     auto sourceModule = frontend.getSourceModule(moduleName);
-    auto module = getModule(moduleName, /* forAutocomplete: */ config.hover.strictDatamodelTypes);
+    auto module = getModule(moduleName, /* forAutocomplete: */ false);
     if (!sourceModule)
         return std::nullopt;
 

@@ -808,7 +808,6 @@ void LanguageServer::onInitialized([[maybe_unused]] const lsp::InitializedParams
 
         std::vector<lsp::FileSystemWatcher> watchers{};
         watchers.push_back(lsp::FileSystemWatcher{"**/.luaurc"});
-        watchers.push_back(lsp::FileSystemWatcher{"**/.robloxrc"});
         watchers.push_back(lsp::FileSystemWatcher{"**/.config.luau"});
         watchers.push_back(lsp::FileSystemWatcher{"**/*.{lua,luau}"});
         client->registerCapability(
@@ -817,7 +816,7 @@ void LanguageServer::onInitialized([[maybe_unused]] const lsp::InitializedParams
     else
     {
         client->sendLogMessage(lsp::MessageType::Warning,
-            "client does not allow didChangeWatchedFiles registration - automatic updating on sourcemap/config changes will not be provided");
+            "client does not allow didChangeWatchedFiles registration - automatic updating on config changes will not be provided");
     }
 
     nullWorkspace->hasConfiguration = true;

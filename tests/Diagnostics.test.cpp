@@ -1,6 +1,5 @@
 #include "doctest.h"
 #include "Fixture.h"
-#include "Platform/RobloxPlatform.hpp"
 
 TEST_SUITE_BEGIN("Diagnostics");
 
@@ -13,15 +12,14 @@ TEST_CASE_FIXTURE(Fixture, "document_diagnostics_sends_information_for_required_
     // Don't show diagnostic for game indexing
     loadDefinition("@extra", "declare game: any");
 
-    registerDocumentForVirtualPath(newDocument("required.luau", R"(
+    newDocument("required.luau", R"(
         --!strict
         local x: string = 1
         return {}
-    )"),
-        "game/Testing/Required");
+    )");
     auto document = newDocument("main.luau", R"(
         --!strict
-        require(game.Testing.Required)
+        require("./required.luau")
     )");
 
     auto diagnostics = workspace.documentDiagnostics(lsp::DocumentDiagnosticParams{{document}}, nullptr);
@@ -38,15 +36,14 @@ TEST_CASE_FIXTURE(Fixture, "document_diagnostics_does_not_send_information_for_r
     // Don't show diagnostic for game indexing
     loadDefinition("@extra", "declare game: any");
 
-    registerDocumentForVirtualPath(newDocument("required.luau", R"(
+    newDocument("required.luau", R"(
         --!strict
         local x: string = 1
         return {}
-    )"),
-        "game/Testing/Required");
+    )");
     auto document = newDocument("main.luau", R"(
         --!strict
-        require(game.Testing.Required)
+        require("./required.luau")
     )");
 
     auto diagnostics = workspace.documentDiagnostics(lsp::DocumentDiagnosticParams{{document}}, nullptr);

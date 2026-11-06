@@ -1,7 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Fixture.h"
 
-#include "Platform/RobloxPlatform.hpp"
 #include "Luau/Parser.h"
 #include "Luau/BuiltinDefinitions.h"
 #include "LuauFileUtils.hpp"
@@ -22,7 +21,6 @@ namespace Luau::LanguageServer
 ClientConfiguration defaultTestClientConfiguration()
 {
     ClientConfiguration config;
-    config.sourcemap.enabled = false;
     config.index.enabled = false;
     return config;
 }
@@ -57,7 +55,7 @@ Fixture::Fixture()
 {
     client->globalConfig = Luau::LanguageServer::defaultTestClientConfiguration();
     workspace.fileResolver.defaultConfig.mode = Luau::Mode::Strict;
-    client->definitionsFiles.emplace("@roblox", "./tests/testdata/standard_definitions.d.luau");
+    client->definitionsFiles.emplace("@standard", "./tests/testdata/standard_definitions.d.luau");
     workspace.setupWithConfiguration(client->globalConfig);
     workspace.isReady = true;
 
@@ -77,17 +75,6 @@ Luau::ModuleName fromString(std::string_view name)
 Uri Fixture::newDocument(const std::string& name, const std::string& source)
 {
     return Luau::LanguageServer::newDocument(workspace, name, source);
-}
-
-/// A hacky way to get cross-module resolution working.
-/// We create a dummy sourcemap node for the particular Uri, which then allows
-/// requires to resolve. e.g. registering "game/Testing/A" will allow `require(game.Testing.A`) to work
-void Fixture::registerDocumentForVirtualPath(const Uri& uri, const Luau::ModuleName& virtualPath)
-{
-    auto platform = dynamic_cast<RobloxPlatform*>(workspace.platform.get());
-    LUAU_ASSERT(platform);
-    auto sourceNode = platform->sourceNodeAllocator.allocate(SourceNode(uri.filename(), "ModuleScript", {uri.fsPath()}, {}));
-    platform->writePathsToMap(sourceNode, virtualPath);
 }
 
 void Fixture::updateDocument(const Uri& uri, const std::string& newSource)
@@ -203,30 +190,10 @@ std::string Fixture::getErrors(const Luau::CheckResult& cr)
     return ss.str();
 }
 
-void Fixture::switchToStandardPlatform()
-{
-    client->globalConfig.platform.type = LSPPlatformConfig::Standard;
-    workspace.platform = LSPPlatform::getPlatform(client->globalConfig, &workspace.fileResolver, &workspace);
-    workspace.fileResolver.platform = workspace.platform.get();
-    workspace.fileResolver.requireSuggester = workspace.fileResolver.platform->getRequireSuggester();
-}
-
-void Fixture::loadSourcemap(const std::string& contents)
-{
-    dynamic_cast<RobloxPlatform*>(workspace.platform.get())->updateSourceMapFromContents(contents);
-}
-
 void Fixture::loadLuaurc(const std::string& source)
 {
     REQUIRE(!WorkspaceFileResolver::parseConfig(workspace.rootUri.resolvePath(Luau::kConfigName), source, workspace.fileResolver.defaultConfig)
             .has_value());
-}
-
-SourceNode* Fixture::getRootSourceNode()
-{
-    auto sourceNode = dynamic_cast<RobloxPlatform*>(workspace.platform.get())->rootSourceNode;
-    REQUIRE(sourceNode);
-    return sourceNode;
 }
 
 std::pair<std::string, lsp::Position> sourceWithMarker(std::string source)

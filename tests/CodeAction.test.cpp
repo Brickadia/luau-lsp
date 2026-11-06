@@ -1,7 +1,5 @@
 #include "doctest.h"
 #include "Fixture.h"
-#include "RobloxTestConstants.h"
-#include "Platform/RobloxPlatform.hpp"
 
 TEST_SUITE_BEGIN("CodeAction");
 
@@ -328,7 +326,6 @@ print(foo())
 
 TEST_CASE_FIXTURE(Fixture, "unknown_global_add_require_fix")
 {
-    client->globalConfig.completion.imports.stringRequires.enabled = true;
 
     auto moduleUri = newDocument("MyModule.luau", R"(
 return {}
@@ -380,7 +377,6 @@ local x = SomeUnknownGlobal
 
 TEST_CASE_FIXTURE(Fixture, "unknown_global_fix_inserts_at_correct_line")
 {
-    client->globalConfig.completion.imports.stringRequires.enabled = true;
 
     auto moduleUri = newDocument("OtherModule.luau", R"(
 return {}
@@ -407,150 +403,8 @@ local x = OtherModule
     CHECK(changes[0].newText.find("local OtherModule = require") != std::string::npos);
 }
 
-TEST_CASE_FIXTURE(Fixture, "unknown_global_offers_service_import_fix")
-{
-    std::string source = dedent(R"(
-        local storage = ReplicatedStorage
-    )");
-    auto uri = newDocument("test.luau", source);
-
-    lsp::CodeActionParams params;
-    params.textDocument.uri = uri;
-    params.range = {{0, 16}, {0, 33}};
-    params.context.only = {lsp::CodeActionKind::QuickFix};
-
-    auto result = workspace.codeAction(params, nullptr);
-
-    auto action = findCodeAction(result, "Import service 'ReplicatedStorage'");
-    REQUIRE(action);
-    CHECK(action->kind == lsp::CodeActionKind::QuickFix);
-    CHECK(action->isPreferred == true);
-    REQUIRE(action->edit);
-    auto& changes = action->edit->changes.at(uri);
-    REQUIRE_EQ(changes.size(), 1);
-
-    auto newSource = applyEdit(source, changes);
-    CHECK_EQ(newSource, dedent(R"(
-        local ReplicatedStorage = game:GetService("ReplicatedStorage")
-        local storage = ReplicatedStorage
-    )"));
-}
-
-TEST_CASE_FIXTURE(Fixture, "unknown_global_offers_instance_based_require_fix")
-{
-    loadSourcemap(R"(
-    {
-        "name": "Game",
-        "className": "DataModel",
-        "children": [
-            {
-                "name": "ReplicatedStorage",
-                "className": "ReplicatedStorage",
-                "children": [
-                    {
-                        "name": "Folder",
-                        "className": "Folder",
-                        "children": [{ "name": "MyModule", "className": "ModuleScript" }]
-                    }
-                ]
-            },
-            {
-                "name": "ServerScriptService",
-                "className": "ServerScriptService",
-                "children": [
-                    { "name": "Script", "className": "Script", "filePaths": ["Script.server.luau"] }
-                ]
-            }
-        ]
-    }
-    )");
-
-    std::string source = dedent(R"(
-        local x = MyModule
-    )");
-    auto uri = newDocument("Script.server.luau", source);
-
-    lsp::CodeActionParams params;
-    params.textDocument.uri = uri;
-    params.range = {{0, 10}, {0, 18}};
-    params.context.only = {lsp::CodeActionKind::QuickFix};
-
-    auto result = workspace.codeAction(params, nullptr);
-
-    auto action = findCodeAction(result, "Add require for 'MyModule' from \"ReplicatedStorage.Folder.MyModule\"");
-    REQUIRE(action);
-    CHECK(action->kind == lsp::CodeActionKind::QuickFix);
-    REQUIRE(action->edit);
-    auto& changes = action->edit->changes.at(uri);
-    REQUIRE_EQ(changes.size(), 2);
-
-    auto newSource = applyEdit(source, changes);
-    CHECK_EQ(newSource, dedent(R"(
-        local ReplicatedStorage = game:GetService("ReplicatedStorage")
-        local MyModule = require(ReplicatedStorage.Folder.MyModule)
-        local x = MyModule
-    )"));
-}
-
-TEST_CASE_FIXTURE(Fixture, "unknown_global_instance_require_reuses_existing_service")
-{
-    loadSourcemap(R"(
-    {
-        "name": "Game",
-        "className": "DataModel",
-        "children": [
-            {
-                "name": "ReplicatedStorage",
-                "className": "ReplicatedStorage",
-                "children": [
-                    {
-                        "name": "Folder",
-                        "className": "Folder",
-                        "children": [{ "name": "MyModule", "className": "ModuleScript" }]
-                    }
-                ]
-            },
-            {
-                "name": "ServerScriptService",
-                "className": "ServerScriptService",
-                "children": [
-                    { "name": "Script", "className": "Script", "filePaths": ["Script.server.luau"] }
-                ]
-            }
-        ]
-    }
-    )");
-
-    std::string source = dedent(R"(
-        local ReplicatedStorage = game:GetService("ReplicatedStorage")
-        local x = MyModule
-    )");
-    auto uri = newDocument("Script.server.luau", source);
-
-    lsp::CodeActionParams params;
-    params.textDocument.uri = uri;
-    params.range = {{1, 10}, {1, 18}};
-    params.context.only = {lsp::CodeActionKind::QuickFix};
-
-    auto result = workspace.codeAction(params, nullptr);
-
-    auto action = findCodeAction(result, "Add require for 'MyModule' from \"ReplicatedStorage.Folder.MyModule\"");
-    REQUIRE(action);
-    REQUIRE(action->edit);
-    auto& changes = action->edit->changes.at(uri);
-    REQUIRE_EQ(changes.size(), 1);
-
-    auto newSource = applyEdit(source, changes);
-    CHECK_EQ(newSource, dedent(R"(
-        local ReplicatedStorage = game:GetService("ReplicatedStorage")
-        local MyModule = require(ReplicatedStorage.Folder.MyModule)
-        local x = MyModule
-    )"));
-}
-
 TEST_CASE_FIXTURE(Fixture, "add_all_missing_requires_source_action")
 {
-    client->globalConfig.completion.imports.stringRequires.enabled = true;
 
     auto moduleA = newDocument("ModuleA.luau", R"(
 return {}
@@ -606,63 +460,6 @@ local y = 2
 
     auto action = findCodeAction(result, "Add all missing requires");
     CHECK_FALSE(action);
-}
-
-TEST_CASE_FIXTURE(Fixture, "add_all_missing_requires_with_services")
-{
-    loadSourcemap(R"(
-    {
-        "name": "Game",
-        "className": "DataModel",
-        "children": [
-            {
-                "name": "ReplicatedStorage",
-                "className": "ReplicatedStorage",
-                "children": [
-                    { "name": "ModuleA", "className": "ModuleScript" },
-                    { "name": "ModuleB", "className": "ModuleScript" }
-                ]
-            },
-            {
-                "name": "ServerScriptService",
-                "className": "ServerScriptService",
-                "children": [
-                    { "name": "Script", "className": "Script", "filePaths": ["Script.server.luau"] }
-                ]
-            }
-        ]
-    }
-    )");
-
-    std::string source = dedent(R"(
-        local a = ModuleA
-        local b = ModuleB
-        local rs = ReplicatedStorage
-    )");
-    auto uri = newDocument("Script.server.luau", source);
-
-    lsp::CodeActionParams params;
-    params.textDocument.uri = uri;
-    params.range = {{0, 0}, {3, 0}};
-    params.context.only = {lsp::CodeActionKind::Source};
-
-    auto result = workspace.codeAction(params, nullptr);
-
-    auto action = findCodeAction(result, "Add all missing requires");
-    REQUIRE(action);
-    REQUIRE(action->edit);
-    auto& changes = action->edit->changes.at(uri);
-    REQUIRE_EQ(changes.size(), 3);
-
-    auto newSource = applyEdit(source, changes);
-    CHECK_EQ(newSource, dedent(R"(
-        local ReplicatedStorage = game:GetService("ReplicatedStorage")
-        local ModuleA = require(ReplicatedStorage.ModuleA)
-        local ModuleB = require(ReplicatedStorage.ModuleB)
-        local a = ModuleA
-        local b = ModuleB
-        local rs = ReplicatedStorage
-    )"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "misspelled_property_single_candidate_fix")
@@ -738,34 +535,6 @@ t.fOo()
 
     auto action = findCodeAction(result, "Change 'fOo' to 'Foo'");
     CHECK_FALSE(action);
-}
-
-TEST_CASE_FIXTURE(Fixture, "sourcemap_unknown_symbol_fix_suggests_string_require")
-{
-    client->globalConfig.completion.imports.stringRequires.enabled = true;
-    loadSourcemap(SOURCEMAP_FOR_STRING_REQUIRES);
-
-    std::string source = dedent(R"(
-        local x = ModuleB
-    )");
-    auto uri = newDocument("packages/core/ModuleA.luau", source);
-
-    lsp::CodeActionParams params;
-    params.textDocument.uri = uri;
-    params.range = {{0, 10}, {0, 17}};
-    params.context.only = {lsp::CodeActionKind::QuickFix};
-
-    auto result = workspace.codeAction(params, nullptr);
-    auto action = findCodeAction(result, "Add require for 'ModuleB' from \"./ModuleB\"");
-    REQUIRE(action);
-    REQUIRE(action->edit);
-    auto& changes = action->edit->changes.at(uri);
-
-    auto newSource = applyEdit(source, changes);
-    CHECK_EQ(newSource, dedent(R"(
-        local ModuleB = require("./ModuleB")
-        local x = ModuleB
-    )"));
 }
 
 TEST_SUITE_END();

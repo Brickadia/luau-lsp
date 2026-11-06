@@ -46,7 +46,7 @@ export type TextEdit = {
 
 export type PluginContext = {
     filePath: string,       -- absolute filesystem path of the source file
-    moduleName: string,     -- Luau module name (virtual path for Roblox, filesystem path otherwise)
+    moduleName: string,     -- Luau module name (a virtual path if the platform has them, otherwise a filesystem path)
 }
 
 export type PluginApi = {

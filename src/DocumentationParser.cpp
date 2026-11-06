@@ -604,11 +604,7 @@ std::optional<std::string> WorkspaceFolder::getDocumentationForAstNode(
     const Luau::ModuleName& moduleName, const Luau::AstNode* node, const Luau::ScopePtr scope)
 {
     if (auto ref = node->as<Luau::AstTypeReference>())
-    {
-        auto config = client->getConfiguration(rootUri);
-        return getDocumentationForTypeReference(
-            moduleName, scope, ref->prefix, ref->name.value, /* forAutocomplete= */ config.hover.strictDatamodelTypes);
-    }
+        return getDocumentationForTypeReference(moduleName, scope, ref->prefix, ref->name.value, /* forAutocomplete= */ false);
     else if (auto alias = node->as<Luau::AstStatTypeAlias>())
     {
         return printMoonwaveDocumentation(getComments(moduleName, alias->location));

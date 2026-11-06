@@ -261,7 +261,6 @@ const Luau::Config& WorkspaceFileResolver::readConfigRec(const Uri& uri, const L
 
     auto configPath = uri.resolvePath(Luau::kConfigName);
     auto luauConfigPath = uri.resolvePath(Luau::kLuauConfigName);
-    auto robloxRcPath = uri.resolvePath(".robloxrc");
 
     if (std::optional<std::string> contents = Luau::FileUtils::readFile(luauConfigPath.fsPath()))
     {
@@ -315,34 +314,6 @@ const Luau::Config& WorkspaceFileResolver::readConfigRec(const Uri& uri, const L
             if (client)
                 // Clear errors presented for file
                 client->publishDiagnostics({configPath, std::nullopt, {}});
-        }
-    }
-    else if (std::optional<std::string> robloxRcContents = Luau::FileUtils::readFile(robloxRcPath.fsPath()))
-    {
-        if (client)
-            client->sendLogMessage(lsp::MessageType::Info, "Loading Luau configuration from " + robloxRcPath.fsPath());
-
-        // Backwards compatibility for .robloxrc files
-        std::optional<std::string> error = parseConfig(robloxRcPath, *robloxRcContents, result, /* compat = */ true);
-        if (error)
-        {
-            if (client)
-            {
-                lsp::Diagnostic diagnostic{{{0, 0}, {0, 0}}};
-                diagnostic.message = *error;
-                diagnostic.severity = lsp::DiagnosticSeverity::Error;
-                diagnostic.source = "Luau";
-                client->publishDiagnostics({robloxRcPath, std::nullopt, {diagnostic}});
-            }
-            else
-                // TODO: this should never be reached anymore
-                std::cerr << robloxRcPath.toString() << ": " << *error;
-        }
-        else
-        {
-            if (client)
-                // Clear errors presented for file
-                client->publishDiagnostics({robloxRcPath, std::nullopt, {}});
         }
     }
 

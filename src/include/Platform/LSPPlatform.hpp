@@ -56,7 +56,7 @@ public:
         return std::nullopt;
     }
 
-    /// The name points to a virtual path (i.e. for Roblox, game/ or ProjectRoot/)
+    /// The name points to a virtual path rather than a file
     [[nodiscard]] virtual bool isVirtualPath(const Luau::ModuleName& name) const
     {
         return false;

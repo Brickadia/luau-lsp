@@ -3,7 +3,7 @@
 #include "Analyze/AnalyzeCli.hpp"
 #include "LSP/Workspace.hpp"
 #include "Luau/DenseHash.h"
-#include "Platform/RobloxPlatform.hpp"
+#include "Platform/LSPPlatform.hpp"
 #include "argparse/argparse.hpp"
 
 #include <queue>
@@ -218,7 +218,6 @@ lsp::RequireGraphResult WorkspaceFolder::requireGraph(const lsp::RequireGraphPar
 
 int startRequireGraph(const argparse::ArgumentParser& program)
 {
-    auto sourcemapPath = program.present<std::string>("--sourcemap");
     auto baseLuaurc = program.present<std::string>("--base-luaurc");
     auto outputFormat = program.get<std::string>("--output-format");
     std::vector<std::string> files{};
@@ -273,8 +272,6 @@ int startRequireGraph(const argparse::ArgumentParser& program)
     {
         if (platformArg == "standard")
             client.globalConfig.platform.type = LSPPlatformConfig::Standard;
-        else if (platformArg == "roblox")
-            client.globalConfig.platform.type = LSPPlatformConfig::Roblox;
     }
 
     std::unique_ptr<LSPPlatform> platform = LSPPlatform::getPlatform(client.globalConfig, &fileResolver);
@@ -284,30 +281,6 @@ int startRequireGraph(const argparse::ArgumentParser& program)
 
     Luau::Frontend frontend(FFlag::LuauSolverV2 ? Luau::SolverMode::New : Luau::SolverMode::Old, &fileResolver, &fileResolver, frontendOptions);
     Luau::freeze(frontend.globals.globalTypes);
-
-    if (sourcemapPath)
-    {
-        if (client.globalConfig.platform.type == LSPPlatformConfig::Roblox)
-        {
-            auto robloxPlatform = dynamic_cast<RobloxPlatform*>(platform.get());
-
-            if (auto sourceMapContents = Luau::FileUtils::readFile(*sourcemapPath))
-            {
-                robloxPlatform->updateSourceNodeMap(sourceMapContents.value());
-                // We don't need to call 'handleSourcemapUpdate' as we are not type checking
-            }
-            else
-            {
-                fprintf(stderr, "Cannot load sourcemap path %s: failed to read contents\n", sourcemapPath->c_str());
-                return 1;
-            }
-        }
-        else
-        {
-            std::cerr << "warning: a sourcemap was provided, but the current platform is not `roblox`. Use `--platform roblox` to ensure the "
-                         "sourcemap option is respected.\n";
-        }
-    }
 
     std::vector<Luau::ModuleName> moduleNames;
     moduleNames.reserve(files.size());

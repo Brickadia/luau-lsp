@@ -3,8 +3,8 @@
 #include <memory>
 
 #include "LSP/Diagnostics.hpp"
+#include "LSP/LuauExt.hpp"
 #include "Platform/LSPPlatform.hpp"
-#include "Platform/RobloxPlatform.hpp"
 #include "Plugin/PluginManager.hpp"
 #include "Plugin/PluginDefinitions.hpp"
 #include "glob/match.h"
@@ -211,7 +211,7 @@ void WorkspaceFolder::onDidChangeWatchedFiles(const std::vector<lsp::FileEvent>&
     {
         platform->onDidChangeWatchedFiles(change);
 
-        if (change.uri.filename() == ".luaurc" || change.uri.filename() == ".robloxrc" || change.uri.filename() == ".config.luau")
+        if (change.uri.filename() == ".luaurc" || change.uri.filename() == ".config.luau")
         {
             client->sendLogMessage(lsp::MessageType::Info, "Acknowledge config changed for workspace " + name + ", clearing configuration cache");
             fileResolver.clearConfigCache();
@@ -574,16 +574,10 @@ void WorkspaceFolder::registerTypes(const std::vector<std::string>& disabledGlob
     if (client->definitionsFiles.empty())
         client->sendLogMessage(lsp::MessageType::Warning, "No definitions file provided by client");
 
-    // For backwards compatibility, we need to keep an ordering where a definitions file for '@roblox' is always processed first
-    std::vector<std::pair<std::string, std::string>> definitionsFilesToProcess{};
-    definitionsFilesToProcess.reserve(client->definitionsFiles.size());
-    if (auto it = client->definitionsFiles.find("@roblox"); it != client->definitionsFiles.end())
-        definitionsFilesToProcess.emplace_back(*it);
-    for (const auto& pair : client->definitionsFiles)
-    {
-        if (pair.first != "@roblox")
-            definitionsFilesToProcess.emplace_back(pair);
-    }
+    // Process definitions files in a stable order, by package name
+    std::vector<std::pair<std::string, std::string>> definitionsFilesToProcess{
+        client->definitionsFiles.begin(), client->definitionsFiles.end()};
+    std::sort(definitionsFilesToProcess.begin(), definitionsFilesToProcess.end());
 
     for (const auto& [packageName, definitionsFile] : definitionsFilesToProcess)
     {

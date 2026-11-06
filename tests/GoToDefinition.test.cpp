@@ -235,11 +235,10 @@ TEST_CASE_FIXTURE(Fixture, "cross_module_inlined_function_table_property_definit
             end,
         }
     )");
-    registerDocumentForVirtualPath(required, "game/Testing/useFunction");
 
     auto [source, position] = sourceWithMarker(R"(
         --!strict
-        local utilities = require(game.Testing.useFunction)
+        local utilities = require("./required.luau")
 
         local y = utilities.useFu|nction("testing")
     )");
@@ -266,11 +265,10 @@ TEST_CASE_FIXTURE(Fixture, "cross_module_indirect_variable_inlined_function_tabl
         }
         return T
     )");
-    registerDocumentForVirtualPath(required, "game/Testing/useFunction");
 
     auto [source, position] = sourceWithMarker(R"(
         --!strict
-        local utilities = require(game.Testing.useFunction)
+        local utilities = require("./required.luau")
 
         local y = utilities.useFu|nction("testing")
     )");
@@ -298,11 +296,10 @@ TEST_CASE_FIXTURE(Fixture, "cross_module_table_property_referencing_local_variab
             useFunction = useFunction
         }
     )");
-    registerDocumentForVirtualPath(required, "game/Testing/useFunction");
 
     auto [source, position] = sourceWithMarker(R"(
         --!strict
-        local utilities = require(game.Testing.useFunction)
+        local utilities = require("./required.luau")
 
         local y = utilities.useFu|nction("testing")
     )");
@@ -329,11 +326,10 @@ TEST_CASE_FIXTURE(Fixture, "cross_module_separate_function_table_property_defini
 
         return T
     )");
-    registerDocumentForVirtualPath(required, "game/Testing/useFunction");
 
     auto [source, position] = sourceWithMarker(R"(
         --!strict
-        local utilities = require(game.Testing.useFunction)
+        local utilities = require("./required.luau")
 
         local y = utilities.useFu|nction("testing")
     )");
@@ -360,11 +356,10 @@ TEST_CASE_FIXTURE(Fixture, "cross_module_named_function_table_property_definitio
 
         return T
     )");
-    registerDocumentForVirtualPath(required, "game/Testing/useFunction");
 
     auto [source, position] = sourceWithMarker(R"(
         --!strict
-        local utilities = require(game.Testing.useFunction)
+        local utilities = require("./required.luau")
 
         local y = utilities.useFu|nction("testing")
     )");
@@ -389,11 +384,10 @@ TEST_CASE_FIXTURE(Fixture, "cross_module_imported_type_alias_definition")
 
         return {}
     )");
-    registerDocumentForVirtualPath(required, "game/Testing/useFunction");
 
     auto [source, position] = sourceWithMarker(R"(
         --!strict
-        local utilities = require(game.Testing.useFunction)
+        local utilities = require("./required.luau")
 
         local y: utilities.Fo|o = ""
     )");
@@ -418,11 +412,10 @@ TEST_CASE_FIXTURE(Fixture, "cross_module_imported_type_alias_definition_after_ch
 
         return {}
     )");
-    registerDocumentForVirtualPath(required, "game/Testing/useFunction");
 
     auto [source, position] = sourceWithMarker(R"(
         --!strict
-        local utilities = require(game.Testing.useFunction)
+        local utilities = require("./required.luau")
 
         local y: utilities.Fo|o = ""
     )");
@@ -451,11 +444,10 @@ TEST_CASE_FIXTURE(Fixture, "cross_module_imported_type_alias_definition_after_ch
 
         return {}
     )");
-    registerDocumentForVirtualPath(required, "game/Testing/useFunction");
 
     auto [source, position] = sourceWithMarker(R"(
         --!strict
-        local utilities = require(game.Testing.useFunction)
+        local utilities = require("./required.luau")
 
         local y: utilities.Fo|o = ""
     )");
@@ -485,11 +477,10 @@ TEST_CASE_FIXTURE(Fixture, "go_to_definition_of_a_named_function_returns_the_und
 
         return useFunction
     )");
-    registerDocumentForVirtualPath(required, "game/Testing/useFunction");
 
     auto [source, position] = sourceWithMarker(R"(
         --!strict
-        local useFunction = require(game.Testing.useFunction)
+        local useFunction = require("./required.luau")
 
         local y = useFu|nction("testing")
     )");
@@ -513,11 +504,10 @@ TEST_CASE_FIXTURE(Fixture, "go_to_definition_of_an_anonymous_function_returns_th
         return function(x: string)
         end
     )");
-    registerDocumentForVirtualPath(required, "game/Testing/useFunction");
 
     auto [source, position] = sourceWithMarker(R"(
         --!strict
-        local useFunction = require(game.Testing.useFunction)
+        local useFunction = require("./required.luau")
 
         local y = useFu|nction("testing")
     )");
@@ -548,36 +538,6 @@ TEST_CASE_FIXTURE(Fixture, "go_to_definition_works_for_a_string_require_path")
     auto result = workspace.gotoDefinition(params, nullptr);
     REQUIRE_EQ(result.size(), 1);
     CHECK_EQ(result[0].uri, workspace.rootUri.resolvePath("test.lua"));
-    CHECK_EQ(result[0].range.start, lsp::Position{0, 0});
-    CHECK_EQ(result[0].range.end, lsp::Position{0, 0});
-}
-
-TEST_CASE_FIXTURE(Fixture, "go_to_definition_works_for_a_roblox_require_path")
-{
-    loadSourcemap(R"({
-        "name": "Game",
-        "className": "DataModel",
-        "children": [
-            {
-                "name": "ReplicatedStorage",
-                "className": "ReplicatedStorage",
-                "children": [{ "name": "Test", "className": "ModuleScript", "filePaths": ["source.luau"] }]
-            }
-        ]
-    })");
-
-    auto [source, position] = sourceWithMarker(R"(
-        local X = require(game.ReplicatedStorage.Te|st)
-    )");
-    auto document = newDocument("main.luau", source);
-
-    auto params = lsp::DefinitionParams{};
-    params.textDocument = lsp::TextDocumentIdentifier{document};
-    params.position = position;
-
-    auto result = workspace.gotoDefinition(params, nullptr);
-    REQUIRE_EQ(result.size(), 1);
-    CHECK_EQ(result[0].uri, workspace.rootUri.resolvePath("source.luau"));
     CHECK_EQ(result[0].range.start, lsp::Position{0, 0});
     CHECK_EQ(result[0].range.end, lsp::Position{0, 0});
 }

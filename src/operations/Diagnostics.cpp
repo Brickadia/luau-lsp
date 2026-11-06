@@ -235,7 +235,7 @@ void WorkspaceFolder::pushDiagnostics(const lsp::DocumentUri& uri, const size_t 
     }
 }
 
-/// Recompute all necessary diagnostics when we detect a configuration (or sourcemap) change
+/// Recompute all necessary diagnostics when we detect a configuration change
 void WorkspaceFolder::recomputeDiagnostics(const ClientConfiguration& config)
 {
     // Handle diagnostics if in push-mode

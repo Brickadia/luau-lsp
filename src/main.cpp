@@ -233,11 +233,6 @@ int main(int argc, char** argv)
         .help("output analysis errors in a particular format")
         .default_value(std::string("default"))
         .choices("default", "plain", "gnu");
-    analyze_command.add_argument("--no-strict-dm-types")
-        .help("disable strict DataModel types in type-checking")
-        .default_value(false)
-        .implicit_value(true);
-    analyze_command.add_argument("--sourcemap").help("path to a Rojo-style instance sourcemap to understand the DataModel").metavar("PATH");
     analyze_command.add_argument("--definitions", "--defs")
         .help("A path to a Luau definitions file to load into the global namespace")
         .default_value<std::vector<std::string>>({})
@@ -249,7 +244,7 @@ int main(int argc, char** argv)
         .append()
         .metavar("GLOB");
     analyze_command.add_argument("--base-luaurc").help("path to a .luaurc file which acts as the base default configuration").metavar("PATH");
-    analyze_command.add_argument("--platform").help("platform-specific support features").choices("standard", "roblox");
+    analyze_command.add_argument("--platform").help("platform-specific support features").choices("standard");
     analyze_command.add_argument("--settings").help("path to LSP-style settings").metavar("PATH");
     analyze_command.add_argument("files").help("files to perform analysis on").remaining();
 
@@ -288,9 +283,8 @@ int main(int argc, char** argv)
     require_graph_command.set_assign_chars(":=");
     require_graph_command.add_description("Output a dependency graph");
     require_graph_command.add_parents(parent_parser);
-    require_graph_command.add_argument("--sourcemap").help("path to a Rojo-style instance sourcemap to understand the DataModel").metavar("PATH");
     require_graph_command.add_argument("--base-luaurc").help("path to a .luaurc file which acts as the base default configuration").metavar("PATH");
-    require_graph_command.add_argument("--platform").help("platform-specific support features").choices("standard", "roblox");
+    require_graph_command.add_argument("--platform").help("platform-specific support features").choices("standard");
     require_graph_command.add_argument("--output-format")
         .help("output dependency graph in a particular format")
         .choices("json", "dot")

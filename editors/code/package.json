@@ -206,9 +206,7 @@
           "items": {
             "type": "string"
           },
-          "default": [
-            "**/_Index/**"
-          ],
+          "default": [],
           "scope": "resource"
         },
         "luau-lsp.analyzeLuaFiles": {
@@ -512,9 +510,7 @@
           "items": {
             "type": "string"
           },
-          "default": [
-            "**/_Index/**"
-          ],
+          "default": [],
           "scope": "resource"
         },
         "luau-lsp.completion.enableFragmentAutocomplete": {
@@ -589,19 +585,19 @@
         },
         "luau-lsp.bytecode.vectorLib": {
           "type": "string",
-          "default": "Vector3",
+          "default": "",
           "scope": "resource",
           "markdownDescription": "The `vectorLib` to use when compiling bytecode"
         },
         "luau-lsp.bytecode.vectorCtor": {
           "type": "string",
-          "default": "new",
+          "default": "",
           "scope": "resource",
           "markdownDescription": "The `vectorCtor` to use when compiling bytecode"
         },
         "luau-lsp.bytecode.vectorType": {
           "type": "string",
-          "default": "Vector3",
+          "default": "",
           "scope": "resource",
           "markdownDescription": "The `vectorType` to use when compiling bytecode"
         },

@@ -64,17 +64,6 @@ target_sources(Luau.LanguageServer PRIVATE
         src/platform/LSPPlatform.cpp
         src/platform/StringRequireAutoImporter.cpp
         src/platform/StringRequireSuggester.cpp
-        src/platform/roblox/InstanceRequireAutoImporter.cpp
-        src/platform/roblox/RobloxCodeAction.cpp
-        src/platform/roblox/RobloxColorProvider.cpp
-        src/platform/roblox/RobloxCompletion.cpp
-        src/platform/roblox/RobloxFileResolver.cpp
-        src/platform/roblox/RobloxLanguageServer.cpp
-        src/platform/roblox/RobloxLuauExt.cpp
-        src/platform/roblox/RobloxSourcemap.cpp
-        src/platform/roblox/RobloxStringRequireSuggester.cpp
-        src/platform/roblox/RobloxSourceNode.cpp
-        src/platform/roblox/RobloxStudioPlugin.cpp
         src/operations/Diagnostics.cpp
         src/operations/Completion.cpp
         src/operations/DocumentSymbol.cpp
@@ -126,10 +115,8 @@ target_sources(Luau.LanguageServer.Test PRIVATE
         tests/Utils.test.cpp
         tests/WorkspaceFileResolver.test.cpp
         tests/SemanticTokens.test.cpp
-        tests/Sourcemap.test.cpp
         tests/References.test.cpp
         tests/Rename.test.cpp
-        tests/ColorProvider.test.cpp
         tests/LuauExt.test.cpp
         tests/CliConfigurationParser.test.cpp
         tests/Hover.test.cpp

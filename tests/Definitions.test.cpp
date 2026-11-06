@@ -1,6 +1,5 @@
 #include "doctest.h"
 #include "Fixture.h"
-#include "Platform/RobloxPlatform.hpp"
 #include "LuauFileUtils.hpp"
 #include "Luau/Parser.h"
 
@@ -8,50 +7,12 @@ using namespace Luau::LanguageServer;
 
 TEST_SUITE_BEGIN("Definitions");
 
-TEST_CASE("use_platform_metadata_from_first_registered_definitions_file")
-{
-    TestClient client;
-    auto workspace = WorkspaceFolder(&client, "$TEST_WORKSPACE", Uri(), std::nullopt);
-
-    client.definitionsFiles.emplace("@roblox", "./tests/testdata/standard_definitions.d.luau");
-    client.definitionsFiles.emplace("@roblox1", "./tests/testdata/extra_definitions_relying_on_mutations.d.luau");
-
-    workspace.setupWithConfiguration(defaultTestClientConfiguration());
-    workspace.isReady = true;
-
-    REQUIRE(workspace.definitionsFileMetadata);
-
-    RobloxDefinitionsFileMetadata metadata = workspace.definitionsFileMetadata.value();
-    REQUIRE(!metadata.SERVICES.empty());
-    REQUIRE(!metadata.CREATABLE_INSTANCES.empty());
-}
-
-TEST_CASE("handles_definitions_files_relying_on_mutations")
-{
-    TestClient client;
-    auto workspace = WorkspaceFolder(&client, "$TEST_WORKSPACE", Uri::file(*Luau::FileUtils::getCurrentWorkingDirectory()), std::nullopt);
-
-    client.definitionsFiles.emplace("@roblox", "./tests/testdata/standard_definitions.d.luau");
-    client.definitionsFiles.emplace("@roblox1", "./tests/testdata/extra_definitions_relying_on_mutations.d.luau");
-
-    workspace.setupWithConfiguration(defaultTestClientConfiguration());
-    workspace.isReady = true;
-
-    auto document = newDocument(workspace, "foo.luau", R"(
-        local x: ExtraDataRelyingOnMutations
-        local y = x.RigType
-    )");
-
-    auto result = workspace.frontend.check(workspace.fileResolver.getModuleName(document));
-    REQUIRE(result.errors.empty());
-}
-
 TEST_CASE("dont_crash_when_mutating_a_definitions_file_that_does_not_contain_expected_state")
 {
     TestClient client;
     auto workspace = WorkspaceFolder(&client, "$TEST_WORKSPACE", Uri(), std::nullopt);
 
-    client.definitionsFiles.emplace("@roblox", "./tests/testdata/bad_standard_definitions.d.luau");
+    client.definitionsFiles.emplace("@test", "./tests/testdata/bad_standard_definitions.d.luau");
 
     workspace.setupWithConfiguration(defaultTestClientConfiguration());
 
@@ -148,7 +109,7 @@ TEST_CASE("support_disabling_methods_in_extern_types_globals")
     TestClient client;
     auto workspace = WorkspaceFolder(&client, "$TEST_WORKSPACE", Uri::file(*Luau::FileUtils::getCurrentWorkingDirectory()), std::nullopt);
 
-    client.definitionsFiles.emplace("@roblox", "./tests/testdata/standard_definitions.d.luau");
+    client.definitionsFiles.emplace("@test", "./tests/testdata/standard_definitions.d.luau");
 
     auto config = defaultTestClientConfiguration();
     config.types.disabledGlobals = {

@@ -165,15 +165,11 @@ void applySettings(const std::string& settingsContents, CliClient& client)
         client.definitionsFiles.insert(pair);
 
     // Process any fflags
-    if (client.globalConfig.fflags.enableNewSolver)
-        FFlag::LuauSolverV2.value = true;
     registerFastFlagsCLI(client.globalConfig.fflags.override);
+    applyRequiredFlags();
     if (!client.globalConfig.fflags.enableByDefault)
         std::cerr << "warning: `luau-lsp.fflags.enableByDefault` is not respected in CLI Analyze mode. Please instead use the CLI option "
                      "`--no-flags-enabled` to configure this.\n";
-    if (client.globalConfig.fflags.sync)
-        std::cerr << "warning: `luau-lsp.fflags.sync` is not supported in CLI Analyze mode. Instead, all FFlags are enabled by default. "
-                     "Please manually configure necessary FFlags\n";
 }
 
 std::unordered_map<std::string, std::string> processDefinitionsFilePaths(const argparse::ArgumentParser& program)
@@ -189,7 +185,7 @@ std::unordered_map<std::string, std::string> processDefinitionsFilePaths(const a
         if (eqIndex == std::string::npos)
         {
             // TODO: Remove Me - backwards compatibility
-            packageName = "@roblox";
+            packageName = "@definitions";
             if (backwardsCompatibilityNameSuffix > 0)
                 packageName += std::to_string(backwardsCompatibilityNameSuffix);
             backwardsCompatibilityNameSuffix += 1;
@@ -213,7 +209,6 @@ int startAnalyze(const argparse::ArgumentParser& program)
 {
     ReportFormat format = ReportFormat::Default;
     bool annotate = program.is_used("--annotate");
-    auto sourcemapPath = program.present<std::string>("--sourcemap");
     auto baseLuaurc = program.present<std::string>("--base-luaurc");
     auto settingsPath = program.present<std::string>("--settings");
     FFlag::DebugLuauTimeTracing.value = program.is_used("--timetrace");
@@ -273,38 +268,7 @@ int startAnalyze(const argparse::ArgumentParser& program)
     {
         if (platformArg == "standard")
             client.globalConfig.platform.type = LSPPlatformConfig::Standard;
-        else if (platformArg == "roblox")
-            client.globalConfig.platform.type = LSPPlatformConfig::Roblox;
     }
-
-    if (client.globalConfig.platform.type == LSPPlatformConfig::Roblox && client.definitionsFiles.empty())
-    {
-        fprintf(stderr, "WARNING: --platform is set to 'roblox' but no definitions files are provided. 'luau-lsp analyze' does not download "
-                        "definitions files; use `--platform=standard` to silence\n");
-    }
-
-    // Configure sourcemap via configuration (handled by RobloxPlatform::setupWithConfiguration)
-    if (sourcemapPath)
-    {
-        if (client.globalConfig.platform.type == LSPPlatformConfig::Roblox)
-        {
-            client.globalConfig.sourcemap.sourcemapFile = *sourcemapPath;
-            client.globalConfig.sourcemap.enabled = true;
-        }
-        else
-        {
-            std::cerr << "warning: a sourcemap was provided, but the current platform is not `roblox`. Use `--platform roblox` to ensure the "
-                         "sourcemap option is respected.\n";
-        }
-    }
-    else
-    {
-        client.globalConfig.sourcemap.enabled = false;
-    }
-
-    // Handle deprecated --no-strict-dm-types flag via configuration
-    if (program.is_used("--no-strict-dm-types"))
-        client.globalConfig.diagnostics.strictDatamodelTypes = false;
 
     client.globalConfig.index.enabled = false;
 

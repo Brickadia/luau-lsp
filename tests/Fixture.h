@@ -46,14 +46,11 @@ struct Fixture
     ~Fixture();
 
     Uri newDocument(const std::string& name, const std::string& source);
-    void registerDocumentForVirtualPath(const Uri& uri, const Luau::ModuleName& virtualPath);
     void updateDocument(const Uri& uri, const std::string& newSource);
 
     Luau::AstStatBlock* parse(const std::string& source, const Luau::ParseOptions& parseOptions = {});
     Luau::LoadDefinitionFileResult loadDefinition(const std::string& packageName, const std::string& source);
-    void loadSourcemap(const std::string& source);
     void loadLuaurc(const std::string& source);
-    SourceNode* getRootSourceNode();
 
     // Single file operations
     Luau::CheckResult check(Luau::Mode mode, std::string source);
@@ -78,9 +75,6 @@ struct Fixture
 
     void dumpErrors(std::ostream& os, const std::vector<Luau::TypeError>& errors);
     std::string getErrors(const Luau::CheckResult& cr);
-
-    /// Switch the workspace to Standard platform (fixture defaults to Roblox)
-    void switchToStandardPlatform();
 };
 
 #define LUAU_LSP_REQUIRE_ERRORS(result) \

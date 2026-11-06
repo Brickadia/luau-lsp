@@ -400,12 +400,11 @@ lsp::InlayHintResult WorkspaceFolder::inlayHint(const lsp::InlayHintParams& para
     if (!textDocument)
         throw JsonRpcException(lsp::ErrorCode::RequestFailed, "No managed text document for " + params.textDocument.uri.toString());
 
-    // TODO: expressiveTypes - remove "forAutocomplete" once the types have been fixed
-    checkStrict(moduleName, cancellationToken, /* forAutocomplete: */ config.hover.strictDatamodelTypes);
+    checkStrict(moduleName, cancellationToken, /* forAutocomplete: */ false);
     throwIfCancelled(cancellationToken);
 
     auto sourceModule = frontend.getSourceModule(moduleName);
-    auto module = getModule(moduleName, /* forAutocomplete: */ config.hover.strictDatamodelTypes);
+    auto module = getModule(moduleName, /* forAutocomplete: */ false);
     if (!sourceModule || !module)
         return {};
 

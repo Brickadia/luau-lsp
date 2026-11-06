@@ -249,15 +249,9 @@ struct SemanticTokensVisitor : public Luau::AstVisitor
         auto it = builtinGlobals.find(global->name);
         if (it != builtinGlobals.end() && strlen(global->name.value) > 0)
         {
-            // SPECIAL CASE: if name is "Enum", classify it as an enum
-            if (global->name == "Enum")
-            {
-                tokens.emplace_back(SemanticToken{
-                    global->location.begin, global->location.end, lsp::SemanticTokenTypes::Enum, lsp::SemanticTokenModifiers::DefaultLibrary});
-            }
             // If it starts with an uppercase letter, flag it as a class
             // Otherwise, flag it as a builtin
-            else if (isupper(global->name.value[0]))
+            if (isupper(global->name.value[0]))
             {
                 tokens.emplace_back(SemanticToken{
                     global->location.begin, global->location.end, lsp::SemanticTokenTypes::Class, lsp::SemanticTokenModifiers::DefaultLibrary});
@@ -292,13 +286,8 @@ struct SemanticTokensVisitor : public Luau::AstVisitor
             return true;
 
         auto parentIsBuiltin = false;
-        auto parentIsEnum = false;
         if (auto global = index->expr->as<Luau::AstExprGlobal>())
-        {
             parentIsBuiltin = builtinGlobals.find(global->name) != builtinGlobals.end();
-            if (parentIsBuiltin && global->name == "Enum")
-                parentIsEnum = true;
-        }
 
         auto ty = Luau::follow(*parentTy);
         if (auto propInformation = lookupProp(ty, std::string(index->index.value)); propInformation.size() == 1 && propInformation[0].property.readTy)
@@ -306,9 +295,7 @@ struct SemanticTokensVisitor : public Luau::AstVisitor
             auto prop = propInformation[0].property;
 
             auto defaultType = lsp::SemanticTokenTypes::Property;
-            if (parentIsEnum)
-                defaultType = lsp::SemanticTokenTypes::Enum;
-            else if (Luau::hasTag(prop.tags, "EnumItem"))
+            if (Luau::hasTag(prop.tags, "EnumItem"))
                 defaultType = lsp::SemanticTokenTypes::EnumMember;
 
             auto type = inferTokenType(*prop.readTy, defaultType);

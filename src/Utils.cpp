@@ -1,6 +1,5 @@
 #include "LSP/Utils.hpp"
 #include "Luau/StringUtils.h"
-#include "Platform/RobloxPlatform.hpp"
 #include <algorithm>
 
 #include "Luau/TimeTrace.h"
@@ -21,77 +20,6 @@ std::optional<std::string> getParentPath(const std::string& path)
 
     return "";
 }
-
-/// Returns a path at the ancestor point.
-/// i.e., for game/ReplicatedStorage/Module/Child/Foo, and ancestor == Module, returns game/ReplicatedStorage/Module
-std::optional<std::string> getAncestorPath(const std::string& path, const std::string& ancestorName, const SourceNode* rootSourceNode)
-{
-    // We want to remove the child from the path name in case the ancestor has the same name as the child
-    auto parentPath = getParentPath(path);
-    if (!parentPath)
-        return std::nullopt;
-
-    // Append a "/" to the end of the parentPath to make searching easier
-    auto parentPathWithSlash = *parentPath + "/";
-
-    auto searchTarget = "/" + ancestorName + "/";
-    auto ancestor = parentPathWithSlash.rfind(searchTarget);
-    if (ancestor != std::string::npos)
-    {
-        // +1 to skip the leading '/' in the search target
-        return parentPathWithSlash.substr(0, ancestor + 1 + ancestorName.size());
-    }
-
-    // Handle the edge case where the ancestor is the very first path component
-    if (parentPathWithSlash.rfind(ancestorName + "/", 0) == 0)
-    {
-        return ancestorName;
-    }
-
-    // At this point we know there is definitely no ancestor with the same name within the path
-    // We can return ProjectRoot if project is not a DataModel and rootSourceNode.name == ancestorName
-    if (rootSourceNode && !isDataModel(parentPathWithSlash) && ancestorName == rootSourceNode->name)
-    {
-        return "ProjectRoot";
-    }
-
-    return std::nullopt;
-}
-
-std::string convertToScriptPath(std::string path)
-{
-    std::string output = "";
-#ifdef _WIN32
-    std::replace(path.begin(), path.end(), '\\', '/');
-#endif
-    std::vector<std::string_view> components = Luau::split(path, '/');
-    for (auto it = components.begin(); it != components.end(); ++it)
-    {
-        auto str = *it;
-        if (str == ".")
-        {
-            if (it == components.begin())
-                output += "script";
-        }
-        else if (str == "..")
-        {
-            if (it == components.begin())
-                output += "script.Parent";
-            else
-                output += ".Parent";
-        }
-        else if (!Luau::isIdentifier(str))
-            output += "[\"" + std::string(str) + "\"]";
-        else
-        {
-            if (it != components.begin())
-                output += ".";
-            output += str;
-        }
-    }
-    return output;
-}
-
 
 std::string codeBlock(const std::string& language, const std::string& code)
 {
@@ -128,12 +56,6 @@ std::string resolvePath(const std::string& path)
     else
         return path;
 }
-
-bool isDataModel(const std::string& path)
-{
-    return Luau::startsWith(path, "game/");
-}
-
 
 void trim_start(std::string& str)
 {

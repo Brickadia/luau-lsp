@@ -5,7 +5,6 @@
 #include "LSP/Workspace.hpp"
 #include "LSP/WorkspaceFileResolver.hpp"
 #include "Analyze/CliConfigurationParser.hpp"
-#include "Platform/RobloxPlatform.hpp"
 #include "Luau/TypeAttach.h"
 #include "Luau/PrettyPrinter.h"
 
@@ -36,21 +35,13 @@ ostream& operator<<(ostream& os, const vector<T>& value)
 static void initCliClient(CliClient& client)
 {
     client.globalConfig = Luau::LanguageServer::defaultTestClientConfiguration();
-    client.definitionsFiles.emplace("@roblox", "./tests/testdata/standard_definitions.d.luau");
+    client.definitionsFiles.emplace("@test", "./tests/testdata/standard_definitions.d.luau");
 }
 
 static void setupCliWorkspace(CliClient& client, WorkspaceFolder& workspace)
 {
     workspace.setupWithConfiguration(client.globalConfig);
     workspace.isReady = true;
-}
-
-static void initRobloxCliClient(CliClient& client)
-{
-    initCliClient(client);
-    client.globalConfig.platform.type = LSPPlatformConfig::Roblox;
-    client.globalConfig.sourcemap.enabled = true;
-    client.globalConfig.sourcemap.sourcemapFile = "sourcemap.json";
 }
 
 TEST_CASE("getFilesToAnalyze")
@@ -121,26 +112,13 @@ TEST_CASE("definition_files_from_settings_file_applied")
 {
     CliClient client;
 
-    auto configFile = R"({ "luau-lsp.types.definitionFiles": [ "global_types/types.d.luau" ] })";
+    auto configFile = R"({ "luau-lsp.types.definitionFiles": { "@types": "global_types/types.d.luau" } })";
 
     applySettings(configFile, client);
 
     REQUIRE_EQ(client.definitionsFiles.size(), 1);
-    REQUIRE(client.definitionsFiles.find("@roblox1") != client.definitionsFiles.end());
-    CHECK_EQ(client.definitionsFiles["@roblox1"], "global_types/types.d.luau");
-}
-
-TEST_CASE("enable_new_solver_fflag_from_settings_file_applied")
-{
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
-
-    CliClient client;
-
-    auto configFile = R"({ "luau-lsp.fflags.enableNewSolver": true })";
-
-    applySettings(configFile, client);
-
-    CHECK(FFlag::LuauSolverV2);
+    REQUIRE(client.definitionsFiles.find("@types") != client.definitionsFiles.end());
+    CHECK_EQ(client.definitionsFiles["@types"], "global_types/types.d.luau");
 }
 
 TEST_CASE_FIXTURE(Fixture, "analysis_relative_file_paths")
@@ -160,13 +138,13 @@ TEST_CASE("parse_definitions_files_handles_new_syntax")
         .metavar("PATH");
 
     std::vector<std::string> arguments{
-        "", "--definitions:@roblox=example_path.d.luau", "--definitions:@lune=lune.d.luau", "--definitions:no_at_sign=path.d.luau"};
+        "", "--definitions:@test=example_path.d.luau", "--definitions:@lune=lune.d.luau", "--definitions:no_at_sign=path.d.luau"};
     program.parse_args(arguments);
 
     auto definitionsFiles = processDefinitionsFilePaths(program);
 
     CHECK_EQ(definitionsFiles, std::unordered_map<std::string, std::string>{
-                                   {"@roblox", "example_path.d.luau"},
+                                   {"@test", "example_path.d.luau"},
                                    {"@lune", "lune.d.luau"},
                                    {"@no_at_sign", "path.d.luau"},
                                });
@@ -188,8 +166,8 @@ TEST_CASE("parse_definitions_files_handles_legacy_syntax")
     auto definitionsFiles = processDefinitionsFilePaths(program);
 
     CHECK_EQ(definitionsFiles, std::unordered_map<std::string, std::string>{
-                                   {"@roblox", "example_path.d.luau"},
-                                   {"@roblox1", "lune.d.luau"},
+                                   {"@definitions", "example_path.d.luau"},
+                                   {"@definitions1", "lune.d.luau"},
                                });
 }
 
@@ -244,41 +222,6 @@ TEST_CASE("definitions_loaded_through_workspace_via_client")
     CHECK(cr.errors.empty());
 }
 
-TEST_CASE("sourcemap_loaded_through_workspace_configuration")
-{
-    TempDir t("analyze_cli_sourcemap");
-
-    auto sourcemapContents = R"({
-        "name": "Game",
-        "className": "DataModel",
-        "children": [
-            {
-                "name": "ReplicatedStorage",
-                "className": "ReplicatedStorage",
-                "children": [
-                    {
-                        "name": "Module",
-                        "className": "ModuleScript",
-                        "filePaths": ["src/Module.luau"]
-                    }
-                ]
-            }
-        ]
-    })";
-
-    t.write_child("sourcemap.json", sourcemapContents);
-    t.write_child("src/Module.luau", "return {}");
-
-    CliClient client;
-    initRobloxCliClient(client);
-    WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), std::nullopt);
-    setupCliWorkspace(client, workspace);
-
-    auto* robloxPlatform = dynamic_cast<RobloxPlatform*>(workspace.platform.get());
-    REQUIRE(robloxPlatform);
-    CHECK(robloxPlatform->rootSourceNode != nullptr);
-}
-
 TEST_CASE("annotate_retains_type_graphs")
 {
     TempDir t("analyze_cli_annotate");
@@ -306,128 +249,6 @@ end
     Luau::attachTypeData(*sm, *m);
     std::string annotated = Luau::prettyPrintWithTypes(*sm->root);
     CHECK(annotated.find("number") != std::string::npos);
-}
-
-TEST_CASE("analyze_resolves_game_requires_with_sourcemap")
-{
-    // Regression test for https://github.com/JohnnyMorganz/luau-lsp/issues/1473
-    TempDir t("analyze_game_requires");
-
-    // ServerModule and Util are at completely different filesystem locations but are
-    // DataModel siblings — only the sourcemap knows they are related.
-    t.write_child("sourcemap.json", R"({
-        "name": "Game",
-        "className": "DataModel",
-        "children": [
-            {
-                "name": "ReplicatedStorage",
-                "className": "ReplicatedStorage",
-                "children": [
-                    {
-                        "name": "Util",
-                        "className": "ModuleScript",
-                        "filePaths": ["packages/util/Util.luau"]
-                    }
-                ]
-            },
-            {
-                "name": "ServerScriptService",
-                "className": "ServerScriptService",
-                "children": [
-                    {
-                        "name": "ServerModule",
-                        "className": "ModuleScript",
-                        "filePaths": ["src/server/ServerModule.luau"]
-                    }
-                ]
-            }
-        ]
-    })");
-    t.write_child("packages/util/Util.luau", "return { value = 42 }");
-    t.write_child("src/server/ServerModule.luau", "local _ = require('@game/ReplicatedStorage/Util')");
-
-    CliClient client;
-    initRobloxCliClient(client);
-    WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), std::nullopt);
-    setupCliWorkspace(client, workspace);
-
-    auto serverModulePath = Uri::file(t.path() + "/src/server/ServerModule.luau").fsPath();
-    CHECK(analyzeFile(workspace, serverModulePath, ReportFormat::Default, false));
-}
-
-TEST_CASE("analyze_resolves_non_mirrored_relative_requires_with_sourcemap")
-{
-    // Variant of the above: relative require between DataModel siblings whose
-    // filesystem paths are non-mirrored (packages/core/ vs packages/combat/).
-    TempDir t("analyze_non_mirrored_relative");
-
-    t.write_child("sourcemap.json", R"({
-        "name": "Game",
-        "className": "DataModel",
-        "children": [
-            {
-                "name": "ReplicatedStorage",
-                "className": "ReplicatedStorage",
-                "children": [
-                    {
-                        "name": "ModuleA",
-                        "className": "ModuleScript",
-                        "filePaths": ["packages/core/ModuleA.luau"]
-                    },
-                    {
-                        "name": "ModuleB",
-                        "className": "ModuleScript",
-                        "filePaths": ["packages/combat/ModuleB.luau"]
-                    }
-                ]
-            }
-        ]
-    })");
-    t.write_child("packages/core/ModuleA.luau", "local _ = require('./ModuleB')");
-    t.write_child("packages/combat/ModuleB.luau", "return {}");
-
-    CliClient client;
-    initRobloxCliClient(client);
-    WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), std::nullopt);
-    setupCliWorkspace(client, workspace);
-
-    auto moduleAPath = Uri::file(t.path() + "/packages/core/ModuleA.luau").fsPath();
-    CHECK(analyzeFile(workspace, moduleAPath, ReportFormat::Default, false));
-}
-
-TEST_CASE("analyze_resolves_game_requires_from_file_outside_sourcemap")
-{
-    // `@game` is absolute, so it must resolve from build output that the sourcemap does not cover.
-    TempDir t("analyze_game_requires_outside_sourcemap");
-
-    t.write_child("sourcemap.json", R"({
-        "name": "Game",
-        "className": "DataModel",
-        "children": [
-            {
-                "name": "ReplicatedStorage",
-                "className": "ReplicatedStorage",
-                "children": [
-                    {
-                        "name": "Util",
-                        "className": "ModuleScript",
-                        "filePaths": ["packages/util/Util.luau"]
-                    }
-                ]
-            }
-        ]
-    })");
-    t.write_child("packages/util/Util.luau", "return { value = 42 }");
-    // dist/ has no sourcemap node.
-    t.write_child("dist/main.luau", "local _ = require('@game/ReplicatedStorage/Util')");
-
-    CliClient client;
-    initRobloxCliClient(client);
-    WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), std::nullopt);
-    setupCliWorkspace(client, workspace);
-
-    auto mainPath = Uri::file(t.path() + "/dist/main.luau").fsPath();
-    CHECK(analyzeFile(workspace, mainPath, ReportFormat::Default, false));
 }
 
 TEST_SUITE_END();
