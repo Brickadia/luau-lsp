@@ -100,6 +100,19 @@ struct DocumentationLocation
     Luau::Location location;
 };
 
+static std::optional<DocumentationLocation> getPropertyDocumentationLocation(const PropLookup& lookup)
+{
+    auto definitionModuleName = Luau::getDefinitionModuleName(lookup.baseTableTy);
+    if (!definitionModuleName)
+        return std::nullopt;
+
+    if (lookup.property.location)
+        return DocumentationLocation{*definitionModuleName, *lookup.property.location};
+    if (lookup.property.typeLocation)
+        return DocumentationLocation{*definitionModuleName, *lookup.property.typeLocation};
+    return std::nullopt;
+}
+
 std::optional<lsp::Hover> WorkspaceFolder::hover(const lsp::HoverParams& params, const LSPCancellationToken& cancellationToken)
 {
     auto config = client->getConfiguration(rootUri);
@@ -139,6 +152,9 @@ std::optional<lsp::Hover> WorkspaceFolder::hover(const lsp::HoverParams& params,
     std::optional<Luau::TypeId> type = std::nullopt;
     std::optional<std::string> documentationSymbol = getDocumentationSymbolAtPosition(*sourceModule, *module, position);
     std::optional<DocumentationLocation> documentationLocation = std::nullopt;
+    std::optional<std::string> tableKeyName = std::nullopt;
+    // A field's own documentation comment is more specific than its type's documentation.
+    bool documentationLocationIsField = false;
 
     if (auto ref = node->as<Luau::AstTypeReference>())
     {
@@ -204,24 +220,38 @@ std::optional<lsp::Hover> WorkspaceFolder::hover(const lsp::HoverParams& params,
     }
     else if (auto expr = exprOrLocal.getExpr())
     {
-        // Special case, we want to check if there is a parent in the ancestry, and if it is an AstTable
-        // If so, and we are hovering over a prop, we want to give type info for the assigned expression to the prop
-        // rather than just "string"
+        // A string key of a table literal shows the field it fills: the declared property of the table's expected
+        // type (with its documentation), else the type of the assigned value. Other keys get the normal hover.
         auto ancestry = Luau::findAstAncestryOfPosition(*sourceModule, position);
         if (ancestry.size() >= 2 && ancestry.at(ancestry.size() - 2)->is<Luau::AstExprTable>())
         {
             auto parent = ancestry.at(ancestry.size() - 2)->as<Luau::AstExprTable>();
             for (const auto& [kind, key, value] : parent->items)
             {
-                if (key && key->location.contains(position))
+                if (!key || !key->location.contains(position))
+                    continue;
+
+                if (auto keyString = key->as<Luau::AstExprConstantString>())
                 {
-                    // Return type type of the value
-                    if (auto it = module->astTypes.find(value))
+                    tableKeyName = std::string(keyString->value.data, keyString->value.size);
+                    if (auto expectedType = module->astExpectedTypes.find(parent))
                     {
-                        type = *it;
+                        auto props = lookupProp(Luau::follow(*expectedType), *tableKeyName);
+                        if (props.size() == 1 && props[0].property.readTy)
+                        {
+                            type = props[0].property.readTy;
+                            documentationLocation = getPropertyDocumentationLocation(props[0]);
+                            documentationLocationIsField = true;
+                        }
                     }
-                    break;
+
+                    if (!type)
+                    {
+                        if (auto it = module->astTypes.find(value))
+                            type = *it;
+                    }
                 }
+                break;
             }
         }
 
@@ -234,15 +264,12 @@ std::optional<lsp::Hover> WorkspaceFolder::hover(const lsp::HoverParams& params,
                 auto indexName = index->index.value;
                 if (auto propInformation = lookupProp(parentType, indexName); !propInformation.empty())
                 {
-                    auto [baseTy, prop] = propInformation[0];
-                    if (propInformation.size() == 1 && prop.readTy)
-                        type = prop.readTy;
-                    if (auto definitionModuleName = Luau::getDefinitionModuleName(baseTy))
+                    if (propInformation.size() == 1 && propInformation[0].property.readTy)
+                        type = propInformation[0].property.readTy;
+                    if (auto location = getPropertyDocumentationLocation(propInformation[0]))
                     {
-                        if (prop.location)
-                            documentationLocation = {definitionModuleName.value(), prop.location.value()};
-                        else if (prop.typeLocation)
-                            documentationLocation = {definitionModuleName.value(), prop.typeLocation.value()};
+                        documentationLocation = location;
+                        documentationLocationIsField = true;
                     }
                 }
             }
@@ -292,6 +319,10 @@ std::optional<lsp::Hover> WorkspaceFolder::hover(const lsp::HoverParams& params,
     {
         auto [typeName, typeFun] = typeAliasInformation.value();
         typeString = codeBlock("luau", "type " + toStringTypeFun(typeName, typeFun) + " = " + typeString);
+    }
+    else if (tableKeyName)
+    {
+        typeString = codeBlock("luau", *tableKeyName + ": " + typeString);
     }
     else if (auto ftv = Luau::get<Luau::FunctionType>(*type))
     {
@@ -347,29 +378,26 @@ std::optional<lsp::Hover> WorkspaceFolder::hover(const lsp::HoverParams& params,
         typeString = codeBlock("luau", typeString);
     }
 
-    if (std::optional<std::string> docs;
-        documentationSymbol && (docs = printDocumentation(client->documentation, *documentationSymbol)) && docs && !docs->empty())
+    auto printLocationDocumentation = [&]()
+    {
+        return documentationLocation ? printMoonwaveDocumentation(getComments(documentationLocation->moduleName, documentationLocation->location))
+                                     : std::string{};
+    };
+
+    std::string documentation = documentationLocationIsField ? printLocationDocumentation() : std::string{};
+    if (documentation.empty() && documentationSymbol)
+        documentation = printDocumentation(client->documentation, *documentationSymbol).value_or("");
+    if (documentation.empty())
+        documentation = getDocumentationForType(*type).value_or("");
+    if (documentation.empty())
+        documentation = getDocumentationForAstNode(moduleName, node, scope).value_or("");
+    if (documentation.empty() && !documentationLocationIsField)
+        documentation = printLocationDocumentation();
+
+    if (!documentation.empty())
     {
         typeString += kDocumentationBreaker;
-        typeString += *docs;
-    }
-    else if (auto documentation = getDocumentationForType(*type); documentation && !documentation->empty())
-    {
-        typeString += kDocumentationBreaker;
-        typeString += *documentation;
-    }
-    else if (auto documentation = getDocumentationForAstNode(moduleName, node, scope); documentation && !documentation->empty())
-    {
-        typeString += kDocumentationBreaker;
-        typeString += *documentation;
-    }
-    else if (documentationLocation)
-    {
-        if (auto text = printMoonwaveDocumentation(getComments(documentationLocation->moduleName, documentationLocation->location)); !text.empty())
-        {
-            typeString += kDocumentationBreaker;
-            typeString += text;
-        }
+        typeString += documentation;
     }
 
     return lsp::Hover{{lsp::MarkupKind::Markdown, typeString}};
